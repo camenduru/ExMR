@@ -11,6 +11,11 @@ build/
 dist/
 .venv/
 
+# web UI (exmr/ui)
+node_modules/
+exmr/ui/web/.vite/
+exmr/ui/videos/
+
 # tooling
 .ruff_cache/
 .vscode/

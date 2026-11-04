@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ExMR &middot; VRM Animation</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark"></span>
+        <div>
+          <h1>ExMR</h1>
+          <p>extremity motion refinement &rarr; VRM animation</p>
+        </div>
+      </div>
+      <div class="pill" id="status-pill"><span class="dot"></span><span id="status-text">checking models</span></div>
+    </header>
+
+    <main>
+      <section class="panel source">
+        <h2>1 &middot; clip</h2>
+        <video id="preview" playsinline controls></video>
+        <div class="row">
+          <button id="btn-add" type="button">Add video&hellip;</button>
+          <input id="file" type="file" accept="video/*,.mp4,.webm,.mov,.mkv,.m4v,.avi" hidden />
+          <button id="btn-remove" type="button" class="ghost">Remove</button>
+        </div>
+        <ul id="clips" class="clips"></ul>
+
+        <div class="options">
+          <label class="check">
+            <input id="opt-static" type="checkbox" checked />
+            <span>static camera</span>
+          </label>
+          <label class="check">
+            <input id="opt-snap" type="checkbox" />
+            <span>snap to ground</span>
+          </label>
+        </div>
+
+        <button id="btn-run" type="button" class="primary">Run ExMR</button>
+        <div class="progress" id="progress"><span id="bar"></span></div>
+        <p class="phase" id="phase">pick a clip, then run ExMR</p>
+      </section>
+
+      <section class="panel viewer">
+        <h2>2 &middot; avatar</h2>
+        <canvas id="scene"></canvas>
+        <div class="row">
+          <select id="vrm" aria-label="VRM avatar"></select>
+          <button id="btn-vrm" type="button" class="ghost">Load VRM&hellip;</button>
+          <input id="vrm-file" type="file" accept=".vrm" hidden />
+        </div>
+        <div class="row">
+          <button id="btn-play" type="button" disabled>Play preview</button>
+          <button id="btn-bvh" type="button" class="ghost" disabled>BVH</button>
+          <span class="spacer"></span>
+          <button id="btn-export" type="button" class="primary" disabled>Export .vrma</button>
+        </div>
+        <p class="phase" id="export-info"></p>
+        <div class="downloads" id="downloads"></div>
+      </section>
+    </main>
+
+    <p class="hint">Drag the avatar to orbit, scroll to zoom. ExMR reconstructs 3D body, hand and foot motion from the clip; the avatar follows it here in the browser and the export writes that animation as a .vrma.</p>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
