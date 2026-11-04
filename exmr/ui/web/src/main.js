@@ -784,7 +784,21 @@ $('vrm').addEventListener('change', async () => {
 /* ---------------------------------------------------------------- boot */
 window.__exmr = state;
 // test hook: lets a finished job be reopened without running ExMR again
-window.__exmrDebug = { openJob, fetchBVH, bindBVH };
+window.__exmrDebug = {
+  openJob, fetchBVH, bindBVH,
+  frameInfo: () => {
+    const box = new THREE.Box3().setFromObject(state.vrm.scene);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    return {
+      camera: camera.position.toArray().map((v) => +v.toFixed(2)),
+      target: controls.target.toArray().map((v) => +v.toFixed(2)),
+      box: { empty: box.isEmpty(), size: size.toArray().map((v) => +v.toFixed(2)),
+             center: center.toArray().map((v) => +v.toFixed(2)) },
+      visible: state.vrm.scene.visible,
+    };
+  },
+};
 
 async function boot() {
   resize();

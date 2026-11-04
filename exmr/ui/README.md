@@ -1,4 +1,4 @@
-# ExMR web UI
+# VRMExMR web UI
 
 A small local app around ExMR: pick a clip, reconstruct its 3D motion, watch it
 on a VRM avatar, and export the result as a `.vrma`.
