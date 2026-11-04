@@ -8,6 +8,7 @@ import {
   VRMAnimationLoaderPlugin,
 } from '@pixiv/three-vrm-animation';
 import { MocapRetargeter } from './retarget.js';
+import { BVHRetargeter } from './bvhretarget.js';
 import './style.css';
 
 const $ = (id) => document.getElementById(id);
@@ -34,6 +35,10 @@ const state = {
   retargeter: null,
   vrm: null,
   mixer: null,
+  idleMixer: null,
+  idleAction: null,
+  bvhRetarget: null,
+  bvhData: null,
   busy: false,
   runId: 0,
   // BVH preview state
@@ -148,8 +153,7 @@ async function loadVRM(url) {
   });
   // drop the previous avatar (and its GPU buffers) so a reload never leaves a
   // second character standing in the scene
-  state.mixer?.stopAllAction();
-  state.mixer = null;
+  stopIdle();
   for (const child of [...avatarRoot.children]) {
     avatarRoot.remove(child);
     child.traverse((object) => {
@@ -166,8 +170,11 @@ async function loadVRM(url) {
   vrm.scene.updateMatrixWorld(true);
   state.vrm = vrm;
   state.retargeter = new MocapRetargeter(vrm, avatarRoot);
+  bindBVH();
   if (vrm.lookAt) vrm.lookAt.target = camera;
   state.mixer = null;
+  state.idleMixer = null;
+  state.idleAction = null;
   // frame the avatar so a reload or an orbit never leaves it off-screen
   const box = new THREE.Box3().setFromObject(vrm.scene);
   if (!box.isEmpty()) {
@@ -183,13 +190,30 @@ async function loadVRM(url) {
     const animation = idle.userData.vrmAnimations?.[0];
     if (animation) {
       const mixer = new THREE.AnimationMixer(vrm.scene);
-      mixer.clipAction(createVRMAnimationClip(animation, vrm)).play();
-      state.mixer = mixer;
+      const action = mixer.clipAction(createVRMAnimationClip(animation, vrm));
+      state.idleMixer = mixer;
+      state.idleAction = action;
+      if (state.motion) stopIdle();
+      else playIdle();
     }
   } catch {
     /* idle is optional */
   }
   toast(`avatar loaded: ${url.split('/').pop()}`);
+}
+
+/* The idle loop is only for a resting avatar. While mocap drives the humanoid
+   the mixer must stay off: both write the same normalized bones every frame,
+   and the two poses alternating reads as heavy jitter. */
+function playIdle() {
+  if (!state.idleAction || state.motion) return;
+  state.idleAction.reset().play();
+  state.mixer = state.idleMixer;
+}
+
+function stopIdle() {
+  state.idleAction?.stop();
+  state.mixer = null;
 }
 
 /* ----------------------------------------------------------- BVH preview */
@@ -213,28 +237,32 @@ function clearBVH() {
   state.bvhGroup = null;
 }
 
-async function loadBVH(jobId) {
+/* ExMR writes the motion twice: `results.npz` (joints_global) and a BVH. The
+   BVH is the shipped skeleton, and its bone rotations are transferred one to
+   one onto the VRM humanoid (see bvhretarget.js). */
+async function fetchBVH(jobId) {
+  const loader = new BVHLoader();
+  const result = await loader.loadAsync(`/api/jobs/${jobId}/bvh`);
+
+  // BVH from ExMR is in centimeters. Convert every offset and every
+  // position track to meters so the skeleton lives in the same unit
+  // space as the VRM avatar (~1.5 m tall) and visual decorations
+  // (spheres, lines) render at a sensible size.
+  for (const bone of result.skeleton.bones) bone.position.multiplyScalar(0.01);
+  for (const track of result.clip.tracks) {
+    if (!track.name.endsWith('.position')) continue;
+    const values = track.values;
+    for (let i = 0; i < values.length; i += 1) values[i] *= 0.01;
+  }
+  return result;
+}
+
+async function loadBVH(jobId, preloaded = null) {
   clearBVH();
   const url = `/api/jobs/${jobId}/bvh`;
   try {
-    const loader = new BVHLoader();
-    const result = await loader.loadAsync(url);
-
-    // BVH from ExMR is in centimeters. Convert every offset and every
-    // position track to meters so the skeleton lives in the same unit
-    // space as the VRM avatar (~1.5 m tall) and visual decorations
-    // (spheres, lines) render at a sensible size.
+    const result = preloaded || await fetchBVH(jobId);
     const bones = result.skeleton.bones;
-    for (const bone of bones) {
-      bone.position.multiplyScalar(0.01);  // offset → metres
-    }
-    for (const track of result.clip.tracks) {
-      if (track.name.endsWith('.position')) {
-        const arr = track.values;
-        for (let i = 0; i < arr.length; i += 1) arr[i] *= 0.01;
-      }
-    }
-
     const rootBone = bones[0];
     // Use a plain group (no scale) so child geometry uses scene units
     const group = new THREE.Group();
@@ -356,6 +384,7 @@ function pickClip(video) {
   $('btn-bvh').classList.remove('active');
   setBvhMode(false);
   clearBVH();
+  playIdle();
   downloads.innerHTML = '';
   exportInfo.textContent = '';
   for (const button of clips.querySelectorAll('.clip')) {
@@ -413,6 +442,47 @@ async function run() {
   }
 }
 
+/**
+ * Load a finished job: motion frames, the BVH that drives them, and the BVH
+ * preview. Also used when resuming a job after a server restart.
+ */
+async function openJob(jobId) {
+  state.job = jobId;
+  state.motion = await api(`/api/jobs/${jobId}/motion`);
+  state.lastIndex = -1;
+  state.retargeter?.reset();
+  stopIdle();
+  $('btn-play').disabled = false;
+  $('btn-export').disabled = false;
+
+  // Drive the avatar from the BVH ExMR already exported: its bone rotations
+  // are copied onto the VRM humanoid, so the pose matches the skeleton exactly.
+  let bvh = null;
+  try {
+    bvh = await fetchBVH(jobId);
+  } catch {
+    bvh = null;
+  }
+  state.bvhData = bvh;
+  bindBVH();
+  const ok = await loadBVH(jobId, bvh);
+  $('btn-bvh').disabled = !ok;
+}
+
+/** (Re)build the BVH -> VRM rig; needs both a loaded avatar and a BVH. */
+function bindBVH() {
+  state.bvhRetarget = null;
+  if (!state.vrm || !state.bvhData) return;
+  try {
+    state.bvhRetarget = new BVHRetargeter(state.vrm, avatarRoot,
+      state.bvhData.skeleton, state.bvhData.clip);
+    if (state.motion) state.bvhRetarget.update(preview.currentTime || 0);
+  } catch (err) {
+    state.bvhRetarget = null;
+    toast(`BVH rig failed: ${err.message}`, true);
+  }
+}
+
 async function poll(runId) {
   if (runId !== state.runId) return;
   let status;
@@ -427,18 +497,7 @@ async function poll(runId) {
   if (status.state === 'done') {
     bar.style.width = '100%';
     setBusy(false, 'motion ready - press Play preview');
-    try {
-      state.motion = await api(`/api/jobs/${state.job}/motion`);
-      state.lastIndex = -1;
-      state.retargeter?.reset();
-      $('btn-play').disabled = false;
-      $('btn-export').disabled = false;
-      // Load BVH in the background — the button enables on success
-      const ok = await loadBVH(state.job);
-      $('btn-bvh').disabled = !ok;
-    } catch (err) {
-      toast(`loading motion failed: ${err.message}`, true);
-    }
+    await openJob(state.job);
     return;
   }
   if (status.state === 'error' || status.state === 'cancelled') {
@@ -454,7 +513,9 @@ async function poll(runId) {
 function draw() {
   requestAnimationFrame(draw);
   const dt = Math.min(0.05, clock.getDelta());
-  state.mixer?.update(dt);
+  // the idle loop only drives a resting avatar; the mocap pose owns the
+  // humanoid otherwise, and running both is what made the preview jitter
+  if (!state.motion) state.mixer?.update(dt);
   controls?.update();
 
   if (state.bvhMode && state.bvhMixer) {
@@ -480,7 +541,12 @@ function draw() {
   } else {
     const frames = state.motion?.frames;
     const rt = state.retargeter;
-    if (frames && rt && state.playing) {
+    const bvh = state.bvhRetarget;
+    if (bvh && state.motion) {
+      // The BVH path is a pure function of the video clock: seek, pause and
+      // scrub all land on the exact pose, with no frame stepping.
+      bvh.update(preview.currentTime, dt);
+    } else if (frames && rt && state.playing) {
       const fps = state.motion.fps;
       const index = Math.min(frames.length - 1, Math.floor(preview.currentTime * fps));
       // A seek, a fresh play or a long stall can leave the avatar far from the
@@ -493,19 +559,13 @@ function draw() {
         for (let i = from; i <= index; i += 1) rt.update(frames[i], 1 / fps);
         state.lastIndex = index;
       } else {
-        // Cap catch-up to 2 frames per rAF tick. When rAF (60 Hz) runs faster
-        // than the video (30 fps) no catch-up is needed; when it stutters, the
-        // old loop could fire 5+ rt.update() calls in a single tick with
-        // dt=1/fps each, which desynced the One Euro filters from real time
-        // and amplified jitter. Anything beyond 2 frames is skipped to the
-        // target index — the smoothing absorbs the small position jump.
-        let steps = 0;
-        while (state.lastIndex < index && steps < 2) {
+        // step through every pending frame: the video is 25 fps while rAF is
+        // 60 Hz, so this is normally a single update, and dropping frames here
+        // made the pose freeze and then snap (heavy jitter)
+        while (state.lastIndex < index) {
           state.lastIndex += 1;
           rt.update(frames[state.lastIndex], 1 / fps);
-          steps += 1;
         }
-        state.lastIndex = index;
       }
     }
     // the retargeter writes on the normalized humanoid, so the avatar's raw
@@ -555,18 +615,29 @@ function captureFrame(t) {
 async function exportVRMA() {
   if (!state.motion || !state.retargeter) return;
   const rt = state.retargeter;
+  const bvh = state.bvhRetarget;
   exportInfo.textContent = 'baking the animation…';
   downloads.innerHTML = '';
   await new Promise((resolve) => setTimeout(resolve, 30));
   const frames = state.motion.frames;
   const out = [];
-  rt.reset();
-  for (const frame of frames) {
-    rt.update(frame, 1 / state.motion.fps);
-    const captured = captureFrame(frame.t);
-    if (captured) out.push(captured);
+  if (bvh) {
+    bvh.reset();
+    for (const frame of frames) {
+      bvh.update(frame.t, 1 / state.motion.fps);
+      const captured = captureFrame(frame.t);
+      if (captured) out.push(captured);
+    }
+    bvh.reset();
+  } else {
+    rt.reset();
+    for (const frame of frames) {
+      rt.update(frame, 1 / state.motion.fps);
+      const captured = captureFrame(frame.t);
+      if (captured) out.push(captured);
+    }
+    rt.reset();
   }
-  rt.reset();
   if (out.length < 2) {
     exportInfo.textContent = 'nothing was tracked';
     return;
@@ -683,6 +754,8 @@ $('vrm').addEventListener('change', async () => {
 
 /* ---------------------------------------------------------------- boot */
 window.__exmr = state;
+// test hook: lets a finished job be reopened without running ExMR again
+window.__exmrDebug = { openJob, fetchBVH, bindBVH };
 
 async function boot() {
   resize();

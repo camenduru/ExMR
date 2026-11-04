@@ -407,7 +407,11 @@ export class MocapRetargeter {
       this._hv.divideScalar(hl);
       const dot = this._v2.dot(this._hv);
       this._cross.crossVectors(this._v2, this._hv);
-      this._q1.set(dot, this._cross.x, this._cross.y, this._cross.z);
+      // three.js Quaternion.set() is (x, y, z, w): the scalar component (the
+      // half-vector dot product) goes LAST. Passing it first produced a
+      // random ~100 degree rotation every frame, which is what showed up as
+      // heavy jitter.
+      this._q1.set(this._cross.x, this._cross.y, this._cross.z, dot);
       this._q1.normalize();
     }
 
