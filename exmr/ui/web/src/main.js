@@ -589,20 +589,43 @@ function syncPlay() {
 }
 
 /* --------------------------------------------------------------- export */
+/** Humanoid name for every node of an avatar, used to name exported tracks. */
+const humanoidNames = new WeakMap();
+function humanoidNameMap(vrm) {
+  let names = humanoidNames.get(vrm);
+  if (!names) {
+    names = new Map();
+    for (const [name, bone] of Object.entries(vrm.humanoid.normalizedHumanBones ?? {})) {
+      if (bone?.node) names.set(bone.node, name);
+    }
+    humanoidNames.set(vrm, names);
+  }
+  return names;
+}
+
 function captureFrame(t) {
   const rt = state.retargeter;
   const em = state.vrm?.expressionManager;
   if (!rt || !em) return null;
   const bones = {};
-  for (const [name, bone] of Object.entries(rt.b)) {
-    if (!bone) continue;
-    const q = bone.quaternion;
-    bones[name] = [
-      Math.round(q.x * 1e4) / 1e4,
-      Math.round(q.y * 1e4) / 1e4,
-      Math.round(q.z * 1e4) / 1e4,
-      Math.round(q.w * 1e4) / 1e4,
-    ];
+  const round = (q) => [
+    Math.round(q.x * 1e4) / 1e4,
+    Math.round(q.y * 1e4) / 1e4,
+    Math.round(q.z * 1e4) / 1e4,
+    Math.round(q.w * 1e4) / 1e4,
+  ];
+  if (state.bvhRetarget) {
+    // every humanoid bone the BVH drives - fingers included, so the exported
+    // clip is the same pose the preview shows
+    const names = humanoidNameMap(state.vrm);
+    for (const { vrm } of state.bvhRetarget.entries) {
+      const name = names.get(vrm);
+      if (name) bones[name] = round(vrm.quaternion);
+    }
+  } else {
+    for (const [name, bone] of Object.entries(rt.b)) {
+      if (bone) bones[name] = round(bone.quaternion);
+    }
   }
   const expr = {};
   for (const name of ANIM_EXPRESSIONS) {
@@ -614,6 +637,10 @@ function captureFrame(t) {
 
 async function exportVRMA() {
   if (!state.motion || !state.retargeter) return;
+  if (!state.job) {
+    exportInfo.textContent = 'run ExMR on a clip first';
+    return;
+  }
   const rt = state.retargeter;
   const bvh = state.bvhRetarget;
   exportInfo.textContent = 'baking the animation…';
@@ -624,7 +651,9 @@ async function exportVRMA() {
   if (bvh) {
     bvh.reset();
     for (const frame of frames) {
-      bvh.update(frame.t, 1 / state.motion.fps);
+      // snapRoot: an export is baked offline, so the root must sit exactly
+      // where the clip puts it instead of easing toward it every frame.
+      bvh.update(frame.t, 1 / state.motion.fps, true);
       const captured = captureFrame(frame.t);
       if (captured) out.push(captured);
     }

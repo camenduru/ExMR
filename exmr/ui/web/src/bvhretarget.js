@@ -203,7 +203,7 @@ export class BVHRetargeter {
    * hierarchy order, so a child's local rotation is solved against the parent
    * that was already posed this frame.
    */
-  update(time, dt = 1 / 60) {
+  update(time, dt = 1 / 60, snapRoot = false) {
     if (!this.entries.length) return;
     this.mixer.setTime(Math.max(0, time));
     this.holder.updateMatrixWorld(true);
@@ -227,7 +227,7 @@ export class BVHRetargeter {
     this._v.x = clamp(this._v.x, -1.6, 1.6);
     this._v.y = clamp(this._v.y, -0.6, 0.6);
     this._v.z = clamp(this._v.z, -1.6, 1.6);
-    this.root.position.lerp(this._v, damp(dt, TAU_ROOT));
+    this.root.position.lerp(this._v, snapRoot ? 1 : damp(dt, TAU_ROOT));
   }
 
   reset() {
