@@ -39,6 +39,39 @@ hand, and foot motion from monocular video: an initial temporal estimator predic
 after which a foot refinement module (FootMR) and a hand refinement module (HandMR) revisit local
 evidence to predict residual joint rotations for the extremities.
 
+## How to start
+
+1. **Install Docker** — download [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+   (Windows AMD64) and run it. Wait until the whale icon says Docker is running. You also need an
+   NVIDIA GPU and a driver that supports CUDA 12.8 (>= 570); on Windows, enable Docker Desktop's
+   WSL 2 backend.
+
+2. **Start VRMExMR**
+
+   Linux with an NVIDIA GPU
+
+   ```bash
+   docker run -d --name vrmexmr --restart unless-stopped --gpus all --shm-size=8g -p 8010:8010 -v vrmexmr-data:/app/outputs camenduru/vrmexmr
+   ```
+
+   Docker Desktop for Windows
+
+   ```powershell
+   docker run -d --name vrmexmr --restart unless-stopped --gpus all --shm-size=8g -p 8010:8010 -v vrmexmr-data:/app/outputs camenduru/vrmexmr
+   ```
+
+   The command is identical on Windows: the container does not mount the Docker socket, so the
+   doubled-slash socket path used by some other apps does not apply.
+
+   The image is about 26 GB, so the first pull takes a while. `--shm-size=8g` is required; without
+   it the job stalls in SAM 3D Body (see [docker/README.md](docker/README.md)).
+
+3. **Open** <http://localhost:8010>, pick a clip, press **Run ExMR**, then play the result and
+   **Export .vrma**.
+
+That is the whole setup — every model is baked into the image, nothing is downloaded at runtime.
+To build the image yourself instead, see [Docker](#docker).
+
 ## Setup
 
 Tested on Linux with an NVIDIA GPU (about 8 GB of GPU memory, driver >= 570 for CUDA 12.8).
