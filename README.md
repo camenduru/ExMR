@@ -1,5 +1,7 @@
 # ExMR: Extremity Motion Refinement for Monocular Human Motion Capture
 
+https://github.com/user-attachments/assets/3711c1a2-ab37-445a-850e-74d3e94a46fd
+
 [![arXiv](https://img.shields.io/badge/arXiv-2610.26213-b31b1b.svg)](https://arxiv.org/abs/2610.26213)
 [![Project page](https://img.shields.io/badge/Project-Page-blue)](https://twehrbein.github.io/exmr-website/)
 [![Model](https://img.shields.io/badge/%F0%9F%A4%97-Model-yellow)](https://huggingface.co/twehrbein/ExMR)
