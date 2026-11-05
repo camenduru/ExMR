@@ -1,0 +1,19 @@
+# Build context for camenduru/VRMExMR.
+# Everything needed at runtime is copied in; checkpoints are intentionally kept.
+
+.git
+**/.git
+.gitmodules
+.vscode
+.idea
+.ruff_cache
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+.venv
+**/.venv
+**/node_modules
+exmr/ui/dist
+exmr/ui/web/.vite
+outputs
+docker/torch_hub.tar.gz.bak

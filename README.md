@@ -46,6 +46,22 @@ Request access to [SAM 3D Body](https://huggingface.co/facebook/sam-3d-body-dino
 first: its weights are gated and access is approved manually, which can take a while. Please see
 [installation](docs/INSTALL.md) for details.
 
+## Docker
+
+A self-contained VRMExMR image with every model baked in is available from this
+repository:
+
+```bash
+docker build -t camenduru/vrmexmr:latest .
+docker run --rm --gpus all --shm-size=8g -p 8010:8010 camenduru/vrmexmr:latest
+```
+
+Then open <http://127.0.0.1:8010>. `--shm-size=8g` is required: without it the
+SAM 3D Body stage stalls on Docker's 64 MB `/dev/shm` (see
+[docker/README.md](docker/README.md)). The container does not download weights or
+code at runtime; `checkpoints/` must be populated before building. See
+[docker/README.md](docker/README.md) for details and Compose usage.
+
 ## Quick Start
 
 To try ExMR without installing it, the [online demo](https://huggingface.co/spaces/twehrbein/ExMR)

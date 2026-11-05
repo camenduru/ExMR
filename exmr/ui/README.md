@@ -15,7 +15,8 @@ exmr/ui
 ## Run
 
 ```bash
-cd exmr/ui/web && npm install && npm run build   # once, and after src changes
+pip install fastapi uvicorn                        # the UI server's own dependencies
+cd exmr/ui/web && npm install && npm run build     # once, and after src changes
 cd ../../.. && .venv/Scripts/python -m exmr.ui.server --port 8010
 ```
 

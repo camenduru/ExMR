@@ -5,6 +5,7 @@ The hand crop (_crop_hand) is adapted from HaMeR's hamer/datasets/utils.py
 Pavlakos), see THIRD_PARTY_NOTICES.md.
 """
 
+import os
 from pathlib import Path
 
 import cv2
@@ -98,7 +99,8 @@ class HamerHandFeatures:
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            pin_memory=True,
+            # see EXMR_PIN_MEMORY in docker/README.md (Docker on WSL2 limit)
+            pin_memory=os.environ.get("EXMR_PIN_MEMORY", "1") != "0",
         )
         tokens = torch.zeros((len(dataset), 2, self.TOKEN_DIM), dtype=torch.float32)
         i = 0

@@ -1,0 +1,22 @@
+services:
+  vrmexmr:
+    image: camenduru/vrmexmr:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8010:8010"
+    # PyTorch DataLoader workers pass batches through /dev/shm; Docker's 64 MB
+    # default deadlocks the SAM 3D Body stage (see docker/README.md).
+    shm_size: "8gb"
+    volumes:
+      # ExMR jobs and exported .vrma files survive a container restart.
+      - ./outputs:/app/outputs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped

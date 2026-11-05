@@ -3,6 +3,7 @@
 import contextlib
 import io
 import logging
+import os
 import re
 import sys
 import warnings
@@ -141,7 +142,9 @@ class SamBodyFeatures:
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            pin_memory=True,
+            # Docker on WSL2 caps pinned host memory at ~0.5 GB, and a batch of
+            # 32 crops needs ~57 MB per queued worker batch (see docker/README.md)
+            pin_memory=os.environ.get("EXMR_PIN_MEMORY", "1") != "0",
         )
         tokens = torch.zeros((len(dataset), self.TOKEN_DIM), dtype=torch.float32)
         i = 0
